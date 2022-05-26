@@ -39,10 +39,10 @@ if __name__ == '__main__':
         config.device = torch.device('cpu')
     
     # backup the files
-    os.system(f'cp -r models {config.snapshot_dir}')
-    os.system(f'cp -r datasets {config.snapshot_dir}')
-    os.system(f'cp -r lib {config.snapshot_dir}')
-    shutil.copy2('main.py',config.snapshot_dir)
+    # os.system(f'cp -r models {config.snapshot_dir}')
+    # os.system(f'cp -r datasets {config.snapshot_dir}')
+    # os.system(f'cp -r lib {config.snapshot_dir}')
+    # shutil.copy2('main.py',config.snapshot_dir)
     
     
     # model initialization

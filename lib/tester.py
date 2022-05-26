@@ -12,6 +12,10 @@ from common.misc import prepare_logger
 from collections import defaultdict
 import coloredlogs
 
+import pyvista as pv
+
+from scripts.demo import draw_registration_result
+
 class IndoorTester(Trainer):
     """
     3DMatch tester
@@ -289,6 +293,83 @@ def summarize_metrics(metrics):
 
     return summarized
 
+def visualize(pred_transforms, data, index=0):
+
+    ref_points = np.array((data['points_ref'])[index, :, :3])
+    ref_normals = np.array((data['points_ref'])[index, :, 3:])
+    source_points = (data['points_src'])[..., :3]
+    source_normals = np.array((data['points_src'])[index, :, 3:])
+
+    c_transforms = torch.from_numpy(pred_transforms).to('cpu')
+    c_transform = c_transforms[index:(index+1), 4, :, :]
+
+    src_transformed = np.array(se3.transform(c_transform, source_points))
+
+    source_points = np.array(source_points)[index]
+
+    pc = pv.PolyData(np.concatenate((source_points, ref_points)))
+    pc['Normals'] = np.concatenate((source_normals, ref_normals))
+
+    colors = np.concatenate((np.full(shape=len(ref_points), fill_value=1.0),
+                             np.full(shape=len(source_points), fill_value=0.0)))
+
+    pc['point_color'] = colors
+
+    pc.plot(scalars='point_color')
+
+    pc = pv.PolyData(np.concatenate((src_transformed[0], ref_points)))
+    pc['Normals'] = np.concatenate((source_normals, ref_normals))
+
+    # colors = np.concatenate((np.full(shape=len(raw_points), fill_value=1.0),
+    #                          np.full(shape=len(source_points), fill_value=0.0)))
+
+    pc['point_color'] = colors
+
+    pc.plot(scalars='point_color')
+
+def visualise(pred_transforms, data):
+    # data = [data for data in tqdm(test_loader, leave=False)]
+
+    # data = torch.from_numpy(test_loader.dataset._data).to('cpu')
+
+    ref_points = np.array((data['points_ref'])[0, :, :3])
+    ref_normals = np.array((data['points_ref'])[0, :, 3:])
+    source_points = (data['points_src'])[..., :3]
+    source_normals = np.array((data['points_src'])[0, :, 3:])
+
+    # raw_points = np.array(data[0, :, :3])
+    # raw_normals = np.array(data[0, :, 3:])
+    # source_points = data[..., :3]
+    # source_normals = np.array(data[0, :, 3:])
+
+    # c_transforms = torch.from_numpy(pred_transforms).to('cpu')
+
+    c_transform = pred_transforms[:, 0, :, :]
+
+    src_transformed = np.array(se3.transform(c_transform, source_points))
+
+    source_points = np.array(source_points)[0]
+
+    pc0 = pv.PolyData(np.concatenate((source_points, ref_points)))
+    pc0['Normals'] = np.concatenate((source_normals, ref_normals))
+
+    colors0 = np.concatenate((np.full(shape=len(ref_points), fill_value=1.0),
+                             np.full(shape=len(source_points), fill_value=0.0)))
+
+    pc0['point_color'] = colors0
+
+    pc0.plot(scalars='point_color')
+
+    pc1 = pv.PolyData(np.concatenate((src_transformed[0], ref_points)))
+    pc1['Normals'] = np.concatenate((source_normals, ref_normals))
+
+    colors1 = np.concatenate((np.full(shape=len(ref_points), fill_value=1.0),
+                             np.full(shape=len(source_points), fill_value=0.0)))
+
+    pc1['point_color'] = colors1
+
+    pc1.plot(scalars='point_color')
+
 class ModelnetTester(Trainer):
     """
     Modelnet tester
@@ -361,6 +442,9 @@ class ModelnetTester(Trainer):
                     # run ransac 
                     distance_threshold = 0.025
                     ts_est = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False, distance_threshold=distance_threshold, ransac_n = 3)
+                    #
+                    # draw_registration_result(src_pcd, tgt_pcd, src_overlap, tgt_overlap,
+                    #                          src_saliency, tgt_saliency, ts_est)
                 except: # sometimes we left over with too few points in the bottleneck and our k-nn graph breaks
                     ts_est = np.eye(4)
                 pred_transforms.append(ts_est)
@@ -392,7 +476,10 @@ class ModelnetTester(Trainer):
                                         for k in metrics_for_iter[i_iter]}
             summary_metrics = summarize_metrics(metrics_for_iter[i_iter])
             print_metrics(_logger, summary_metrics, title='Evaluation result (iter {})'.format(i_iter))
-        
+
+        visualise(pred_transforms, inputs['sample'])
+        # visualize(pred_transforms, inputs['sample'], index=3)
+
         
 
 def get_trainer(config):
@@ -401,6 +488,8 @@ def get_trainer(config):
     elif(config.dataset == 'kitti'):
         return KITTITester(config)
     elif(config.dataset == 'modelnet'):
+        return ModelnetTester(config)
+    elif(config.dataset == 'holonav'):
         return ModelnetTester(config)
     else:
         raise NotImplementedError
