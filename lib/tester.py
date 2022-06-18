@@ -1,3 +1,5 @@
+import copy
+
 from lib.trainer import Trainer
 import os, torch
 from tqdm import tqdm
@@ -15,6 +17,8 @@ import coloredlogs
 import pyvista as pv
 
 from scripts.demo import draw_registration_result
+
+import pickle
 
 class IndoorTester(Trainer):
     """
@@ -237,13 +241,19 @@ def compute_metrics(data , pred_transforms):
         residual_rotdeg = torch.acos(torch.clamp(0.5 * (rot_trace - 1), min=-1.0, max=1.0)) * 180.0 / np.pi
         residual_transmag = concatenated[:, :, 3].norm(dim=-1)
 
-        # Modified Chamfer distance
+        # # Modified Chamfer distance
+        # src_transformed = se3.transform(pred_transforms, points_src)
+        # ref_clean = points_raw
+        # src_clean = se3.transform(se3.concatenate(pred_transforms, se3.inverse(gt_transforms)), points_raw)
+        # dist_src = torch.min(square_distance(src_transformed, ref_clean), dim=-1)[0]
+        # dist_ref = torch.min(square_distance(points_ref, src_clean), dim=-1)[0]
+        # chamfer_dist = torch.mean(dist_src, dim=1) + torch.mean(dist_ref, dim=1)
+
         src_transformed = se3.transform(pred_transforms, points_src)
-        ref_clean = points_raw
-        src_clean = se3.transform(se3.concatenate(pred_transforms, se3.inverse(gt_transforms)), points_raw)
-        dist_src = torch.min(square_distance(src_transformed, ref_clean), dim=-1)[0]
-        dist_ref = torch.min(square_distance(points_ref, src_clean), dim=-1)[0]
-        chamfer_dist = torch.mean(dist_src, dim=1) + torch.mean(dist_ref, dim=1)
+
+        dist_ref = torch.min(square_distance(points_ref, src_transformed), dim=-1)[0]
+
+        chamfer_dist = torch.mean(dist_ref, dim=1)
 
         metrics = {
             'r_mse': r_mse,
@@ -353,8 +363,8 @@ def visualise(pred_transforms, data):
     pc0 = pv.PolyData(np.concatenate((source_points, ref_points)))
     pc0['Normals'] = np.concatenate((source_normals, ref_normals))
 
-    colors0 = np.concatenate((np.full(shape=len(ref_points), fill_value=1.0),
-                             np.full(shape=len(source_points), fill_value=0.0)))
+    colors0 = np.concatenate((np.full(shape=len(source_points), fill_value=1.0),
+                             np.full(shape=len(ref_points), fill_value=0.0)))
 
     pc0['point_color'] = colors0
 
@@ -363,8 +373,8 @@ def visualise(pred_transforms, data):
     pc1 = pv.PolyData(np.concatenate((src_transformed[0], ref_points)))
     pc1['Normals'] = np.concatenate((source_normals, ref_normals))
 
-    colors1 = np.concatenate((np.full(shape=len(ref_points), fill_value=1.0),
-                             np.full(shape=len(source_points), fill_value=0.0)))
+    colors1 = np.concatenate((np.full(shape=len(source_points), fill_value=1.0),
+                             np.full(shape=len(ref_points), fill_value=0.0)))
 
     pc1['point_color'] = colors1
 
@@ -387,11 +397,13 @@ class ModelnetTester(Trainer):
 
         num_iter = int(len(self.loader['test'].dataset) // self.loader['test'].batch_size)
         c_loader_iter = self.loader['test'].__iter__()
+        stored_inputs = []
         
         self.model.eval()
         with torch.no_grad():
             for idx in tqdm(range(num_iter)): # loop through this epoch
                 inputs = c_loader_iter.next()
+                stored_inputs.append(copy.deepcopy(inputs))
                 try:
                     ##################################
                     # load inputs to device.
@@ -458,7 +470,11 @@ class ModelnetTester(Trainer):
         c_loader_iter = self.loader['test'].__iter__()
         num_processed, num_total = 0, len(pred_transforms)
         metrics_for_iter = [defaultdict(list) for _ in range(pred_transforms.shape[1])]
-        
+
+        gt_transforms = np.array([np.concatenate((pc_data['rot'].cpu().numpy(), pc_data['trans'].cpu().numpy()), axis=1)
+                         for pc_data in self.loader['test']])
+        pred_transforms_array = pred_transforms.cpu().detach().numpy()[:, 0, :3, :]
+
         with torch.no_grad():
             for idx in tqdm(range(num_iter)): # loop through this epoch
                 inputs = c_loader_iter.next()
@@ -467,6 +483,7 @@ class ModelnetTester(Trainer):
                 for i_iter in range(pred_transforms.shape[1]):
                     cur_pred_transforms = pred_transforms[num_processed:num_processed+batch_size, i_iter, :, :]
                     metrics = compute_metrics(inputs['sample'], cur_pred_transforms)
+                    # visualise(pred_transforms, inputs['sample'])
                     for k in metrics:
                         metrics_for_iter[i_iter][k].append(metrics[k])
                 num_processed += batch_size
@@ -477,7 +494,16 @@ class ModelnetTester(Trainer):
             summary_metrics = summarize_metrics(metrics_for_iter[i_iter])
             print_metrics(_logger, summary_metrics, title='Evaluation result (iter {})'.format(i_iter))
 
-        visualise(pred_transforms, inputs['sample'])
+        np.save(os.path.join(self.snapshot_dir, 'output/gt_transforms.npy'), gt_transforms)
+        np.save(os.path.join(self.snapshot_dir, 'output/pred_transforms.npy'), pred_transforms_array)
+
+        src_pcds = np.array([stored_input['sample']['points_src'].numpy() for stored_input in stored_inputs])
+        tgt_pcds = np.array([stored_input['sample']['points_ref'].numpy() for stored_input in stored_inputs])
+
+        np.save(os.path.join(self.snapshot_dir, 'output/src_pcds.npy'), src_pcds)
+        np.save(os.path.join(self.snapshot_dir, 'output/tgt_pcds.npy'), tgt_pcds)
+
+
         # visualize(pred_transforms, inputs['sample'], index=3)
 
         

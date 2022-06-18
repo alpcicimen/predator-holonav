@@ -6,6 +6,7 @@ misc:
   verbose_freq: 1000
   snapshot_freq: 1
   pretrain: 'weights/modelnet.pth'
+#  pretrain: 'weights/holonav.pth'
 
 
 model:
@@ -13,9 +14,9 @@ model:
   in_points_dim: 3
   first_feats_dim: 512
   final_feats_dim: 96
-  first_subsampling_dl: 0.06
+  first_subsampling_dl: 3.0
   in_feats_dim: 1
-  conv_radius: 2.75
+  conv_radius: 2.55
   deform_radius: 5.0
   num_kernel_points: 15
   KP_extent: 2.0
@@ -38,15 +39,15 @@ overlap_attention_module:
 loss:
   pos_margin: 0.1
   neg_margin: 1.4
-  log_scale: 64
-  pos_radius: 0.018
-  safe_radius: 0.06
-  overlap_radius: 500
-  matchability_radius: 500
+  log_scale: 16
+  pos_radius: 3.1
+  safe_radius: 8.0
+  overlap_radius: 7.8
+  matchability_radius: 5.8
   w_circle_loss: 1.0
   w_overlap_loss: 1.0
   w_saliency_loss: 0.0
-  max_points: 384
+  max_points: 256
 
 optimiser:
   optimizer: SGD
@@ -65,9 +66,10 @@ dataset:
   root: data/holonav
   batch_size: 1
   num_workers: 4
-  augment_noise: 0.005
-  partial: [0.7,0.7] # set to [0.5, 0.5] for ModelLoNet
-  num_points: 1024
+  augment_noise: 0.01
+#  partial: [0.9,0.3] # set to [0.5, 0.5] for ModelLoNet
+  partial: [1.0, 1.0]
+  num_points: 4096
   noise_type: match
   rot_mag: 45.0
   trans_mag: 0.01

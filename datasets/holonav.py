@@ -111,6 +111,8 @@ def get_transforms(noise_type: str,
 
         test_transforms = [Transforms.SetDeterministic(),
                            Transforms.RandomTransformSE3_euler(rot_mag=rot_mag, trans_mag=trans_mag),
+                           # Transforms.Resampler(num_points),
+                           Transforms.RandomCrop(partial_p_keep),
                            Transforms.RandomJitter(),
                            Transforms.ShufflePoints()]
 
@@ -179,20 +181,62 @@ class HoloNavInput(Dataset):
             ).delaunay_2d()
                                for val in range(1, 6)]
 
-        else:
-            sourcePC_path = root + '/source_point_clouds_preop_models/sk1_face_d10000f.ply'
-            sourcePC_mesh = np.full(5, pv.read(sourcePC_path))
-            targetPC_points = [pv.PolyData(
-                np.loadtxt((root + '/target_point_clouds/Optical/points1/sk1/reg_pc{}.txt'.format(val)))
-            ).delaunay_2d()
-                               for val in range(1, 6)]
+            self._labels = [0] * 5
+            self._classes = ["custom skull 0"] * 5
 
-        self._labels = [0] * 5
-        self._classes = ["custom skulls"] * 5
+        else:
+            # sourcePC_path = root + '/source_point_clouds_preop_models/sk1_face_d10000f.ply'
+            # sourcePC_mesh = np.full(5, pv.read(sourcePC_path))
+            # targetPC_points = [pv.PolyData(
+            #     np.loadtxt((root + '/target_point_clouds/Optical/points1/sk1/reg_pc{}.txt'.format(val)))
+            # ).delaunay_2d()
+            #                    for val in range(1, 6)]
+
+            # START
+
+            sourcePC_mesh = np.array([], dtype=pv.DataSet)
+            targetPC_points = []
+
+            self._labels = []
+            self._classes = []
+
+            for i in range(1, 4):
+
+                # sk_path = dataset_path + '/source_point_clouds_preop_models/sk{}_face.ply'.format(i)
+                # reg_path = dataset_path + '/target_point_clouds/Optical/points1/sk{}'.format(i)
+                #
+                # reg_points = [pv.PolyData(np.loadtxt(os.path.join(reg_path, fname))).delaunay_2d()
+                #               for fname in os.listdir(reg_path)
+                #               if 'reg_pc' in fname]
+                #
+                # targetPC_points = targetPC_points + reg_points
+                #
+                # sourcePC_mesh = np.append(sourcePC_mesh, np.full(len(reg_points), pv.read(sk_path)))
+                #
+                # self._labels = self._labels + [i-1] * len(reg_points)
+                # self._classes = self._classes + ["custom skull {}".format(i)] * len(reg_points)
+
+                sk_path = root + '/source_point_clouds_preop_models/sk{}_face.ply'.format(i)
+                reg_path = root + '/source_point_clouds_preop_models/sk{}_face_occ.ply'.format(i)
+
+                sourcePC_mesh = np.append(sourcePC_mesh, pv.read(sk_path))
+                targetPC_points = targetPC_points + [pv.read(reg_path)]
+
+                self._labels = self._labels + [i-1]
+                self._classes = self._classes + ["custom skull {}".format(i)]
+
+            # END
+
+            # targetPC_path = root + '/target_point_clouds/depthSensor/p1_example_cleaned.ply'
+            # targetPC_points = np.full(5, pv.read(targetPC_path))
 
         self._data_src = self._prepare_src(sourcePC_mesh)
+        # self._data_ref = self._prepare_src(sourcePC_mesh)
+
+        # self._data_src = self._prepare_ref(targetPC_points)
         self._data_ref = self._prepare_ref(targetPC_points)
 
+        # self.voxel_size = np.array([24.58119604, 44.85551061,  2.33980616,  2.30597854, 12.89437182]) / 2
         self._transform = transform
 
     def __getitem__(self, item):
@@ -200,9 +244,31 @@ class HoloNavInput(Dataset):
         #
         # if self._transform:
         #     sample = self._transform(sample)
-        sample = {'points_src': self._data_src[item, :, :], 'points_ref': self._data_ref[item, :, :],
-                  'points_raw': self._data_src[item, :, :],
+        sample = {'points_src': self._data_src[item][:, :], 'points_ref': self._data_ref[item][:, :],
+                  'points_raw': self._data_src[item][:, :],
                   'label': self._labels[item], 'idx': np.array(item, dtype=np.int32)}
+
+        src_pcd = sample['points_src'][:, :3]
+        src_pcd_n = sample['points_src'][:, 3:]
+        tgt_pcd = sample['points_ref'][:, :3]
+        tgt_pcd_n = sample['points_ref'][:, 3:]
+
+        # voxelize the point clouds here
+        pcd0 = to_o3d_pcd(src_pcd)
+        pcd0.normals = o3d.utility.Vector3dVector(src_pcd_n)
+        pcd1 = to_o3d_pcd(tgt_pcd)
+        pcd1.normals = o3d.utility.Vector3dVector(tgt_pcd_n)
+        pcd0 = pcd0.voxel_down_sample(6.0)
+        pcd1 = pcd1.voxel_down_sample(6.0)
+
+        src_pcd = np.concatenate((np.asarray(pcd0.points, dtype=np.float32), np.asarray(pcd0.normals, dtype=np.float32))
+                                 , axis=-1)
+        tgt_pcd = np.concatenate((np.asarray(pcd1.points, dtype=np.float32), np.asarray(pcd1.normals, dtype=np.float32))
+                                 , axis=-1)
+
+        sample['points_src'] = src_pcd
+        sample['points_ref'] = tgt_pcd
+        sample['points_raw'] = src_pcd
 
         if self._transform:
             sample = self._transform(sample)
@@ -211,6 +277,7 @@ class HoloNavInput(Dataset):
         tgt_pcd = sample['points_ref'][:, :3]
         rot = sample['transform_gt'][:, :3]
         trans = sample['transform_gt'][:, 3][:, None]
+
         matching_inds = get_correspondences(to_o3d_pcd(src_pcd), to_o3d_pcd(tgt_pcd), to_tsfm(rot, trans),
                                             self.overlap_radius)
 
@@ -228,7 +295,7 @@ class HoloNavInput(Dataset):
         return src_pcd, tgt_pcd, src_feats, tgt_feats, rot, trans, matching_inds, src_pcd, tgt_pcd, sample
 
     def __len__(self):
-        return self._data_src.shape[0]
+        return len(self._data_src)
 
     @property
     def classes(self):
@@ -255,14 +322,15 @@ class HoloNavInput(Dataset):
             pc_points = np.asarray(model.points, dtype=np.float32)
             pc_normals = np.asarray(model.point_normals, dtype=np.float32)
 
-            while len(pc_points) > 1024:
-                r_index = random.randint(0, len(pc_points) - 1)
-                pc_points = np.delete(pc_points, r_index, 0)
-                pc_normals = np.delete(pc_normals, r_index, 0)
+            # while len(pc_points) > 1024:
+            #     r_index = random.randint(0, len(pc_points) - 1)
+            #     pc_points = np.delete(pc_points, r_index, 0)
+            #     pc_normals = np.delete(pc_normals, r_index, 0)
 
             data.append(np.concatenate([pc_points[:], pc_normals[:]], axis=-1))
 
-        return np.array(data, dtype=np.float32)
+        # return np.array(data, dtype=np.float32)
+        return data
 
     @staticmethod
     def _prepare_ref(target_pc):
@@ -271,18 +339,19 @@ class HoloNavInput(Dataset):
             pc_points = np.asarray(model.points, dtype=np.float32)
             pc_normals = np.asarray(model.point_normals, dtype=np.float32)
 
-            while len(pc_points) < 1024:
-                pc_points = np.concatenate([pc_points, pc_points])
-                pc_normals = np.concatenate([pc_normals, pc_normals])
-
-            while len(pc_points) > 1024:
-                r_index = random.randint(0, len(pc_points) - 1)
-                pc_points = np.delete(pc_points, r_index, 0)
-                pc_normals = np.delete(pc_normals, r_index, 0)
+            # while len(pc_points) < 1024:
+            #     pc_points = np.concatenate([pc_points, pc_points])
+            #     pc_normals = np.concatenate([pc_normals, pc_normals])
+            #
+            # while len(pc_points) > 1024:
+            #     r_index = random.randint(0, len(pc_points) - 1)
+            #     pc_points = np.delete(pc_points, r_index, 0)
+            #     pc_normals = np.delete(pc_normals, r_index, 0)
 
             data.append(np.concatenate([pc_points[:], pc_normals[:]], axis=-1))
 
-        return np.array(data, dtype=np.float32)
+        # return np.array(data, dtype=np.float32)
+        return data
 
         # pc_points = np.asarray(target_pc.points, dtype=np.float32)
         # pc_normals = np.asarray(target_pc.point_normals, dtype=np.float32)

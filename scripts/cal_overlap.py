@@ -3,10 +3,13 @@ We use this script to calculate the overlap ratios for all the train/test fragme
 """
 import os,sys,glob
 import open3d as o3d
+
+from lib.benchmark_utils import to_o3d_pcd
 from lib.utils import natural_key
 import numpy as np
 from tqdm import tqdm
 import multiprocessing as mp
+import pyvista as pv
 
 def determine_epsilon():
     """
@@ -33,7 +36,7 @@ def get_overlap_ratio(source,target,threshold=0.03):
     We compute overlap ratio from source point cloud to target point cloud
     """
     pcd_tree = o3d.geometry.KDTreeFlann(target)
-    
+
     match_count=0
     for i, point in enumerate(source.points):
         [count, _, _] = pcd_tree.search_radius_vector_3d(point, threshold)
@@ -52,7 +55,7 @@ def cal_overlap_per_scene(c_folder):
         for i in tqdm(range(n_fragments-1)):
             for j in range(i+1,n_fragments):
                 path1,path2=fragments[i],fragments[j]
-                
+
                 # load, downsample and transform
                 pcd1=o3d.io.read_point_cloud(path1)
                 pcd2=o3d.io.read_point_cloud(path2)
@@ -62,13 +65,26 @@ def cal_overlap_per_scene(c_folder):
                 # calculate overlap
                 c_overlap = get_overlap_ratio(pcd1,pcd2)
                 f.write(f'{i},{j},{c_overlap:.4f}\n')
-        f.close()      
+        f.close()
 
 if __name__=='__main__':
-    base_dir='your data folder'
-    scenes = sorted(glob.glob(base_dir))
+    # base_dir='your data folder'
+    # scenes = sorted(glob.glob(base_dir))
+    #
+    # p = mp.Pool(processes=mp.cpu_count())
+    # p.map(cal_overlap_mat,scenes)
+    # p.close()
+    # p.join()
 
-    p = mp.Pool(processes=mp.cpu_count())
-    p.map(cal_overlap_mat,scenes)
-    p.close()
-    p.join()
+    source_dir = "../data/holonav/source_point_clouds_preop_models/sk1_face_d10000f.ply"
+    target_dir = "../data/holonav/target_point_clouds/Optical/points1/sk1/reg_pc5.txt"
+
+    sourcePC_mesh = pv.read(source_dir)
+    targetPC_points = pv.PolyData(np.loadtxt(target_dir)).delaunay_2d()
+
+    radius = 40
+
+    source_points = np.asarray(sourcePC_mesh.points, dtype=np.float32)
+    target_points = np.asarray(targetPC_points.points, dtype=np.float32)
+    print(((get_overlap_ratio(to_o3d_pcd(target_points), to_o3d_pcd(source_points), radius)),
+           (get_overlap_ratio(to_o3d_pcd(source_points), to_o3d_pcd(target_points), radius))))

@@ -4,6 +4,7 @@ import torch.nn as nn
 from tensorboardX import SummaryWriter
 from lib.timer import Timer, AverageMeter
 from lib.utils import Logger,validate_gradient
+import traceback
 
 from tqdm import tqdm
 import torch.nn.functional as F
@@ -207,7 +208,7 @@ class Trainer(object):
                     stats_meter[key].update(value)
             except Exception as inst:
                 print(inst)
-            
+
             torch.cuda.empty_cache()
             
             if (c_iter + 1) % self.verbose_freq == 0 and self.verbose:

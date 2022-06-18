@@ -57,6 +57,24 @@ architectures['modelnet'] = [
     'last_unary'
 ]
 
+# architectures['holonav'] = [
+#     'simple',
+#     'resnetb',
+#     'resnetb',
+#     'resnetb_strided',
+#     'resnetb',
+#     'resnetb',
+#     'resnetb_strided',
+#     'resnetb',
+#     'resnetb',
+#     'nearest_upsample',
+#     'unary',
+#     'unary',
+#     'nearest_upsample',
+#     'unary',
+#     'last_unary'
+# ]
+
 architectures['holonav'] = [
     'simple',
     'resnetb',
