@@ -149,7 +149,7 @@ class MetricLoss(nn.Module):
 
         #######################################
         # filter some of correspondence as we are using different radius for "overlap" and "correspondence"
-        c_dist = torch.norm(src_pcd[correspondence[:,0]] - tgt_pcd[correspondence[:,1]], dim = 1)
+        c_dist = torch.norm(src_pcd[correspondence[:,0].type(torch.int64)] - tgt_pcd[correspondence[:,1].type(torch.int64)], dim = 1)
         c_select = c_dist < self.pos_radius - 0.001
         correspondence = correspondence[c_select]
         if(correspondence.size(0) > self.max_points):
@@ -157,8 +157,8 @@ class MetricLoss(nn.Module):
             correspondence = correspondence[choice]
         src_idx = correspondence[:,0]
         tgt_idx = correspondence[:,1]
-        src_pcd, tgt_pcd = src_pcd[src_idx], tgt_pcd[tgt_idx]
-        src_feats, tgt_feats = src_feats[src_idx], tgt_feats[tgt_idx]
+        src_pcd, tgt_pcd = src_pcd[src_idx.type(torch.int64)], tgt_pcd[tgt_idx.type(torch.int64)]
+        src_feats, tgt_feats = src_feats[src_idx.type(torch.int64)], tgt_feats[tgt_idx.type(torch.int64)]
 
         #######################
         # get L2 distance between source / target point cloud

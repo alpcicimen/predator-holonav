@@ -9,6 +9,7 @@ from lib.utils import load_obj, natural_key
 from datasets.indoor import IndoorDataset
 from datasets.kitti import KITTIDataset
 from datasets.modelnet import get_train_datasets, get_test_datasets
+import datasets.holonav as hv
 
 
 def batch_grid_subsampling_kpconv(points, batches_len, features=None, labels=None, sampleDl=0.1, max_p=0, verbose=0, random_grid_orient=True):
@@ -244,6 +245,9 @@ def get_datasets(config):
     elif(config.dataset=='modelnet'):
         train_set, val_set = get_train_datasets(config)
         benchmark_set = get_test_datasets(config)
+    elif(config.dataset=='holonav'):
+        train_set, val_set = hv.get_train_datasets(config)
+        benchmark_set = hv.get_test_datasets(config)
     else:
         raise NotImplementedError
 

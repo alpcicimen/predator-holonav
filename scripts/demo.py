@@ -5,11 +5,14 @@ Author: Shengyu Huang
 Last modified: 22.02.2021
 """
 import os, torch, time, shutil, json,glob,sys,copy, argparse
+import random
+
 import numpy as np
 from easydict import EasyDict as edict
 from torch.utils.data import Dataset
 from torch import optim, nn
 import open3d as o3d
+import pyvista as pv
 
 cwd = os.getcwd()
 sys.path.append(cwd)
@@ -18,6 +21,7 @@ from datasets.dataloader import get_dataloader
 from models.architectures import KPFCNN
 from lib.utils import load_obj, setup_seed,natural_key, load_config
 from lib.benchmark_utils import ransac_pose_estimation, to_o3d_pcd, get_blue, get_yellow, to_tensor
+from lib.benchmark_utils import to_o3d_pcd, to_tsfm, get_correspondences
 from lib.trainer import Trainer
 from lib.loss import MetricLoss
 import shutil
@@ -56,10 +60,72 @@ class ThreeDMatchDemo(Dataset):
         #tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
 
 
-        src_feats=np.ones_like(src_pcd[:,:1]).astype(np.float32)
-        tgt_feats=np.ones_like(tgt_pcd[:,:1]).astype(np.float32)
+        src_feats = np.ones_like(src_pcd[:, :1]).astype(np.float32)
+        tgt_feats = np.ones_like(tgt_pcd[:, :1]).astype(np.float32)
 
         # fake the ground truth information
+        rot = np.eye(3).astype(np.float32)
+        trans = np.ones((3,1)).astype(np.float32)
+        correspondences = torch.ones(1,2).long()
+
+        return src_pcd,tgt_pcd,src_feats,tgt_feats,rot,trans, correspondences, src_pcd, tgt_pcd, torch.ones(1)
+
+class HoloNavDemo(Dataset):
+    """
+    Load subsampled coordinates, relative rotation and translation
+    Output(torch.Tensor):
+        src_pcd:        [N,3]
+        tgt_pcd:        [M,3]
+        rot:            [3,3]
+        trans:          [3,1]
+    """
+
+    def __init__(self, config, src_path, tgt_path):
+        super(HoloNavDemo, self).__init__()
+        self.config = config
+        self.src_path = src_path
+        self.tgt_path = tgt_path
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, item):
+
+        src_pcd = o3d.io.read_point_cloud(self.src_path)
+        tgt_pcd = o3d.io.read_point_cloud(self.tgt_path, format='xyz')
+
+        src_points = np.asarray(src_pcd.points)
+        tgt_points = np.asarray(tgt_pcd.points)
+
+        while len(src_points) > self.config.n_points:
+            r_index = random.randint(0, len(src_points) - 1)
+            src_points = np.delete(src_points, r_index, 0)
+
+        while len(tgt_points) > self.config.n_points:
+            r_index = random.randint(0, len(tgt_points) - 1)
+            tgt_points = np.delete(tgt_points, r_index, 0)
+
+        src_pcd.points = o3d.utility.Vector3dVector(src_points)
+        tgt_pcd.points = o3d.utility.Vector3dVector(tgt_points)
+
+        src_pcd = src_pcd.voxel_down_sample(0.025)
+        tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
+
+        # R = src_pcd.get_rotation_matrix_from_xyz((np.pi / 2, 0, np.pi / 4))
+        # src_pcd.rotate(R, center=src_pcd.get_center())
+
+        src_pcd = np.array(src_pcd.points).astype(np.float32)
+        tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
+
+        src_feats = np.ones_like(src_pcd[:, :1]).astype(np.float32)
+        tgt_feats = np.ones_like(tgt_pcd[:, :1]).astype(np.float32)
+
+        # fake the ground truth information
+        # rot = np.eye(3).astype(np.float32)
+        # trans = np.ones((3, 1)).astype(np.float32)
+        # tsfm = to_tsfm(rot, trans)
+        # correspondences = get_correspondences(to_o3d_pcd(src_pcd), to_o3d_pcd(tgt_pcd), tsfm, self.config.overlap_radius)
+
         rot = np.eye(3).astype(np.float32)
         trans = np.ones((3,1)).astype(np.float32)
         correspondences = torch.ones(1,2).long()

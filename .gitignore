@@ -7,3 +7,4 @@ weights/
 __pycache__/
 build/
 dump/
+.idea
