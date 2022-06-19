@@ -248,6 +248,31 @@ class HoloNavInput(Dataset):
                   'points_raw': self._data_src[item][:, :],
                   'label': self._labels[item], 'idx': np.array(item, dtype=np.int32)}
 
+        # src_pcd = sample['points_src'][:, :3]
+        # src_pcd_n = sample['points_src'][:, 3:]
+        # tgt_pcd = sample['points_ref'][:, :3]
+        # tgt_pcd_n = sample['points_ref'][:, 3:]
+        #
+        # # voxelize the point clouds here
+        # pcd0 = to_o3d_pcd(src_pcd)
+        # pcd0.normals = o3d.utility.Vector3dVector(src_pcd_n)
+        # pcd1 = to_o3d_pcd(tgt_pcd)
+        # pcd1.normals = o3d.utility.Vector3dVector(tgt_pcd_n)
+        # pcd0 = pcd0.voxel_down_sample(10.0)
+        # pcd1 = pcd1.voxel_down_sample(10.0)
+        #
+        # src_pcd = np.concatenate((np.asarray(pcd0.points, dtype=np.float32), np.asarray(pcd0.normals, dtype=np.float32))
+        #                          , axis=-1)
+        # tgt_pcd = np.concatenate((np.asarray(pcd1.points, dtype=np.float32), np.asarray(pcd1.normals, dtype=np.float32))
+        #                          , axis=-1)
+        #
+        # sample['points_src'] = src_pcd
+        # sample['points_ref'] = tgt_pcd
+        # sample['points_raw'] = src_pcd
+
+        if self._transform:
+            sample = self._transform(sample)
+        # transform to our format
         src_pcd = sample['points_src'][:, :3]
         src_pcd_n = sample['points_src'][:, 3:]
         tgt_pcd = sample['points_ref'][:, :3]
@@ -268,15 +293,14 @@ class HoloNavInput(Dataset):
 
         sample['points_src'] = src_pcd
         sample['points_ref'] = tgt_pcd
-        sample['points_raw'] = src_pcd
+        # sample['points_raw'] = src_pcd
 
-        if self._transform:
-            sample = self._transform(sample)
+        rot = sample['transform_gt'][:, :3]
+        trans = sample['transform_gt'][:, 3][:, None]
+
         # transform to our format
         src_pcd = sample['points_src'][:, :3]
         tgt_pcd = sample['points_ref'][:, :3]
-        rot = sample['transform_gt'][:, :3]
-        trans = sample['transform_gt'][:, 3][:, None]
 
         matching_inds = get_correspondences(to_o3d_pcd(src_pcd), to_o3d_pcd(tgt_pcd), to_tsfm(rot, trans),
                                             self.overlap_radius)

@@ -14,7 +14,7 @@ model:
   in_points_dim: 3
   first_feats_dim: 512
   final_feats_dim: 96
-  first_subsampling_dl: 3.0
+  first_subsampling_dl: 10.0
   in_feats_dim: 1
   conv_radius: 2.55
   deform_radius: 5.0
@@ -42,7 +42,7 @@ loss:
   log_scale: 16
   pos_radius: 3.1
   safe_radius: 8.0
-  overlap_radius: 7.8
+  overlap_radius: 12.0
   matchability_radius: 5.8
   w_circle_loss: 1.0
   w_overlap_loss: 1.0
